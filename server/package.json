@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "express": "^5.2.1",
+    "server": "^1.0.42",
+    "socket.io": "^4.8.3"
+  }
+}

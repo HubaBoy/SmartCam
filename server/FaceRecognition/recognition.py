@@ -2,46 +2,92 @@ import cv2
 import face_recognition
 
 
-def recognize_faces():
-    known_faces_encoding = []
-    known_faces_names = []
+class FaceRecognitionCamera:
 
-    known_person1_image = face_recognition.load_image_file("velizar.jpg")
-    known_person1_encoding = face_recognition.face_encodings(
-        known_person1_image
-    )[0]
+    def __init__(self, known_people):
+        self.known_faces_encoding = []
+        self.known_faces_names = []
 
-    known_faces_encoding.append(known_person1_encoding)
-    known_faces_names.append("Velizar")
+        # Load known people
+        for name, image_path in known_people.items():
 
-    video_capture = cv2.VideoCapture(0)
+            print(f"Loading face: {name} from {image_path}")
 
-    while True:
-        ret, frame = video_capture.read()
+            image = face_recognition.load_image_file(image_path)
 
-        if not ret:
-            print("Failed to read from camera")
-            break
+            encodings = face_recognition.face_encodings(image)
 
-        face_locations = face_recognition.face_locations(frame)
-        face_encodings = face_recognition.face_encodings(
-            frame, face_locations
+            if not encodings:
+                print(f"No face found in {image_path}")
+                continue
+
+            # Use the first detected face
+            self.known_faces_encoding.append(encodings[0])
+            self.known_faces_names.append(name)
+
+            print(f"Loaded face for: {name}")
+
+        # Open camera
+        self.camera = cv2.VideoCapture(0)
+
+        if not self.camera.isOpened():
+            raise RuntimeError("Could not open camera")
+
+        print("Camera opened successfully")
+
+    def get_frame(self):
+
+        success, frame = self.camera.read()
+
+        if not success:
+            print("Could not read camera frame")
+            return None
+
+        # OpenCV uses BGR.
+        # face_recognition expects RGB.
+        rgb_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2RGB
         )
 
+        # Find faces
+        face_locations = face_recognition.face_locations(
+            rgb_frame
+        )
+
+        # Get face encodings
+        face_encodings = face_recognition.face_encodings(
+            rgb_frame,
+            face_locations
+        )
+
+        faces = []
+
         for (top, right, bottom, left), face_encoding in zip(
-            face_locations, face_encodings
+            face_locations,
+            face_encodings
         ):
-            matches = face_recognition.compare_faces(
-                known_faces_encoding,
-                face_encoding
-            )
 
             name = "Unknown"
 
-            if True in matches:
-                first_match_index = matches.index(True)
-                name = known_faces_names[first_match_index]
+            # Compare against known faces
+            if self.known_faces_encoding:
 
+                matches = face_recognition.compare_faces(
+                    self.known_faces_encoding,
+                    face_encoding,
+                    tolerance=0.6
+                )
+
+                if True in matches:
+
+                    first_match_index = matches.index(True)
+
+                    name = self.known_faces_names[
+                        first_match_index
+                    ]
+
+            # Draw rectangle
             cv2.rectangle(
                 frame,
                 (left, top),
@@ -50,24 +96,32 @@ def recognize_faces():
                 2
             )
 
+            # Draw name
             cv2.putText(
                 frame,
                 name,
-                (left, top - 10),
+                (left, max(top - 10, 20)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.9,
                 (0, 0, 255),
                 2
             )
 
-        cv2.imshow("Video", frame)
+            faces.append({
+                "name": name,
+                "location": {
+                    "top": top,
+                    "right": right,
+                    "bottom": bottom,
+                    "left": left
+                }
+            })
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+        return {
+            "image": frame,
+            "faces": faces
+        }
 
-    video_capture.release()
-    cv2.destroyAllWindows()
-
-
-if __name__ == "__worker__":
-    recognize_faces()
+    def release(self):
+        if self.camera:
+            self.camera.release()
